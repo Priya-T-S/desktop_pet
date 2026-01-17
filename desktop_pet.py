@@ -18,13 +18,9 @@ from PyQt5.QtCore import Qt, QTimer, QPoint, QUrl
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 
 # ================= CONFIGURATION (ADD YOUR PATH HERE) =================
-# Get current directory to ensure paths work regardless of execution location
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 1. Sound File Path
 SOUND_YOWAI_MO = os.path.join(BASE_DIR, "gojo_satoru_s_yowai_mo.mp3")
-
-# 2. Image File Paths
 IMG_IDLE = os.path.join(BASE_DIR, "Gemini_Generated_Image_unlrigunlrigunlr-removebg-preview.png")
 IMG_WAVE = os.path.join(BASE_DIR, "Gemini_Generated_Image_fhdklffhdklffhdk-removebg-preview.png")
 IMG_LOW_BATTERY = os.path.join(BASE_DIR, "image-removebg-preview.png")
@@ -47,10 +43,10 @@ class ClipboardWindow(QWidget):
         self.pet = pet
         self.setWindowTitle("Clipboard History")
         self.setFixedSize(350, 450)
-        self.setWindowFlags(Qt.WindowStaysOnTopHint)
+        # Added WindowStaysOnTopHint and Tool to ensure it shows up correctly
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool)
 
         self.list_widget = QListWidget()
-        self.refresh_list()
         self.list_widget.itemClicked.connect(self.copy_item)
 
         delete_btn = QPushButton("Delete Selected")
@@ -74,12 +70,17 @@ class ClipboardWindow(QWidget):
 
     def refresh_list(self):
         self.list_widget.clear()
-        for item in reversed(self.pet.clip_history):
+        # Use a copy to avoid modification issues during iteration
+        history = list(self.pet.clip_history)
+        for item in reversed(history):
             self.list_widget.addItem(item)
 
     def copy_item(self, item):
-        pyperclip.copy(item.text())
-        QToolTip.showText(self.mapToGlobal(QPoint(100, 100)), "Copied to clipboard!", self)
+        try:
+            pyperclip.copy(item.text())
+            QToolTip.showText(QPoint(self.geometry().x() + 100, self.geometry().y() + 100), "Copied to clipboard!", self)
+        except Exception as e:
+            print(f"Copy Error: {e}")
 
     def delete_item(self):
         item = self.list_widget.currentItem()
@@ -98,6 +99,10 @@ class ClipboardWindow(QWidget):
             self.pet.save_clipboard_history()
             self.refresh_list()
 
+    def showEvent(self, event):
+        self.refresh_list()
+        super().showEvent(event)
+
     def closeEvent(self, event):
         event.ignore()
         self.hide()
@@ -110,7 +115,7 @@ class TodoWindow(QWidget):
         self.path = path
         self.setWindowTitle("Todo List")
         self.setFixedSize(350, 450)
-        self.setWindowFlags(Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool)
 
         self.layout = QVBoxLayout()
         
@@ -199,17 +204,23 @@ class TodoWindow(QWidget):
                 label = widget.findChild(QLabel)
                 if checkbox and label:
                     tasks.append(f"{'DONE' if checkbox.isChecked() else 'TODO'}|{label.text()}")
-        with open(self.path, "w", encoding="utf-8") as f:
-            f.write("\n".join(tasks))
+        try:
+            with open(self.path, "w", encoding="utf-8") as f:
+                f.write("\n".join(tasks))
+        except Exception as e:
+            print(f"Save Tasks Error: {e}")
 
     def load_tasks(self):
         if os.path.exists(self.path):
-            with open(self.path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if "|" in line:
-                        status, text = line.split("|", 1)
-                        self.create_task_item(text, status == "DONE")
+            try:
+                with open(self.path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if "|" in line:
+                            status, text = line.split("|", 1)
+                            self.create_task_item(text, status == "DONE")
+            except Exception as e:
+                print(f"Load Tasks Error: {e}")
 
     def get_pending_tasks(self):
         pending = []
@@ -258,14 +269,11 @@ class DesktopPet(QLabel):
         self.todo_window = TodoWindow(self, os.path.join(BASE_DIR, "todo_list.txt"))
 
         self.mouse_pressed = False
-        
-        # Click counter for stopping the program
         self.click_count = 0
         self.click_reset_timer = QTimer(self)
         self.click_reset_timer.setSingleShot(True)
         self.click_reset_timer.timeout.connect(self.reset_click_count)
 
-        # Timers
         self.clip_timer = QTimer(self)
         self.clip_timer.timeout.connect(self.check_clipboard)
         self.clip_timer.start(2000)
@@ -293,13 +301,19 @@ class DesktopPet(QLabel):
 
     def load_clipboard_history(self):
         if os.path.exists(self.clip_history_file):
-            with open(self.clip_history_file, "r", encoding="utf-8") as f:
-                return [line.strip() for line in f.readlines() if line.strip()]
+            try:
+                with open(self.clip_history_file, "r", encoding="utf-8") as f:
+                    return [line.strip() for line in f.readlines() if line.strip()]
+            except Exception as e:
+                print(f"Load Clipboard Error: {e}")
         return []
 
     def save_clipboard_history(self):
-        with open(self.clip_history_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(self.clip_history))
+        try:
+            with open(self.clip_history_file, "w", encoding="utf-8") as f:
+                f.write("\n".join(self.clip_history))
+        except Exception as e:
+            print(f"Save Clipboard Error: {e}")
 
     def reset_click_count(self):
         self.click_count = 0
@@ -307,18 +321,14 @@ class DesktopPet(QLabel):
     def force_exit(self):
         pending = self.todo_window.get_pending_tasks()
         if pending:
-            self.sounds.play(SOUND_YOWAI_MO)
-            # Use Yes/No buttons for confirmation
-            reply = QMessageBox.question(self, "Yowai Mo!", 
+            reply = QMessageBox.question(self, 'Exit', 
                                        f"You still have {len(pending)} tasks left! Yowai mo~\nDo you really want to exit?",
                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply == QMessageBox.Yes:
                 os._exit(0)
             else:
-                # Reset click count if user chooses No or closes the dialog
                 self.reset_click_count()
         else:
-            # If no tasks, just exit directly
             os._exit(0)
 
     def mousePressEvent(self, event):
@@ -326,14 +336,10 @@ class DesktopPet(QLabel):
             self.mouse_pressed = True
             self.drag_pos = event.globalPos() - self.frameGeometry().topLeft()
             self.setFocus()
-            
-            # Increment click count
             self.click_count += 1
             self.click_reset_timer.start(2000)
-            
             if self.click_count >= 4:
                 self.force_exit()
-                
             event.accept()
 
     def mouseReleaseEvent(self, event):
@@ -348,10 +354,13 @@ class DesktopPet(QLabel):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_C:
-            self.clip_window.refresh_list()
             self.clip_window.show()
+            self.clip_window.raise_()
+            self.clip_window.activateWindow()
         elif event.key() == Qt.Key_T:
             self.todo_window.show()
+            self.todo_window.raise_()
+            self.todo_window.activateWindow()
         super().keyPressEvent(event)
 
     def contextMenuEvent(self, event):
@@ -359,7 +368,7 @@ class DesktopPet(QLabel):
         todo_action = QAction("📋 Todo List", self)
         todo_action.triggered.connect(self.todo_window.show)
         clip_action = QAction("📎 Clipboard History", self)
-        clip_action.triggered.connect(lambda: (self.clip_window.refresh_list(), self.clip_window.show()))
+        clip_action.triggered.connect(self.clip_window.show)
         exit_action = QAction("❌ Exit", self)
         exit_action.triggered.connect(self.force_exit)
         menu.addAction(todo_action)
@@ -378,10 +387,20 @@ class DesktopPet(QLabel):
         try:
             text = pyperclip.paste()
             if text and (not self.clip_history or text != self.clip_history[-1]):
-                if text in self.clip_history: self.clip_history.remove(text)
+                if text in self.clip_history: 
+                    self.clip_history.remove(text)
                 self.clip_history.append(text)
+                
+                # Limit history to 50 items
+                if len(self.clip_history) > 50:
+                    self.clip_history.pop(0)
+                    
                 self.save_clipboard_history()
-        except: pass
+                if self.clip_window.isVisible():
+                    self.clip_window.refresh_list()
+        except Exception as e:
+            # Print error to console for debugging
+            print(f"Clipboard Check Error: {e}")
 
     def check_battery(self):
         battery = psutil.sensors_battery()
@@ -390,11 +409,17 @@ class DesktopPet(QLabel):
         else:
             self.setPixmap(self.idle)
 
-# ================= APP START =================
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     
+    # Ensure pyperclip is working
+    try:
+        import pyperclip
+    except ImportError:
+        print("Error: pyperclip not found. Please run 'pip install pyperclip'")
+        sys.exit(1)
+
     pet = DesktopPet()
 
     def on_press(key):
@@ -409,5 +434,4 @@ if __name__ == "__main__":
 
     listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     listener.start()
-
     sys.exit(app.exec_())
