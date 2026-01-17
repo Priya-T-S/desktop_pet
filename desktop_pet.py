@@ -36,9 +36,11 @@ IMG_LOW_BATTERY = os.path.join(BASE_DIR, "image-removebg-preview.png")
 class SoundManager:
     def __init__(self):
         if PYGAME_AVAILABLE:
-            pygame.mixer.init()
-        else:
-            self.player = QMediaPlayer()
+            try:
+                pygame.mixer.init()
+            except:
+                pass
+        self.player = QMediaPlayer()
 
     def play(self, file_path):
         if not os.path.exists(file_path):
@@ -49,15 +51,17 @@ class SoundManager:
             try:
                 pygame.mixer.music.load(file_path)
                 pygame.mixer.music.play()
+                return
             except Exception as e:
                 print(f"Pygame Audio Error: {e}")
-        else:
-            try:
-                url = QUrl.fromLocalFile(file_path)
-                self.player.setMedia(QMediaContent(url))
-                self.player.play()
-            except Exception as e:
-                print(f"PyQt Audio Error: {e}")
+        
+        # Fallback to QMediaPlayer
+        try:
+            url = QUrl.fromLocalFile(file_path)
+            self.player.setMedia(QMediaContent(url))
+            self.player.play()
+        except Exception as e:
+            print(f"PyQt Audio Error: {e}")
 
 # ================= CLIPBOARD WINDOW =================
 class ClipboardWindow(QWidget):
@@ -340,11 +344,11 @@ class DesktopPet(QLabel):
         self.click_count = 0
 
     def force_exit(self):
-        # Play sound on exit attempt
-        self.sounds.play(SOUND_YOWAI_MO)
-        
         pending = self.todo_window.get_pending_tasks()
         if pending:
+            # Play "Yowai Mo" ONLY when there are pending tasks during exit attempt
+            self.sounds.play(SOUND_YOWAI_MO)
+            
             reply = QMessageBox.question(self, 'Exit', 
                                        f"You still have {len(pending)} tasks left! Yowai mo~\nDo you really want to exit?",
                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
@@ -363,9 +367,7 @@ class DesktopPet(QLabel):
             self.click_count += 1
             self.click_reset_timer.start(2000)
             
-            # Play sound on click
-            self.sounds.play(SOUND_YOWAI_MO)
-            
+            # Check for 4 clicks to trigger exit sequence
             if self.click_count >= 4:
                 self.force_exit()
             event.accept()
