@@ -6,6 +6,13 @@ import psutil
 import pyperclip
 from pynput import keyboard
 
+# Try to import pygame for better audio support
+try:
+    import pygame
+    PYGAME_AVAILABLE = True
+except ImportError:
+    PYGAME_AVAILABLE = False
+
 from PyQt5.QtWidgets import (
     QApplication, QLabel, QWidget,
     QListWidget, QListWidgetItem, QPushButton,
@@ -28,13 +35,29 @@ IMG_LOW_BATTERY = os.path.join(BASE_DIR, "image-removebg-preview.png")
 
 class SoundManager:
     def __init__(self):
-        self.player = QMediaPlayer()
+        if PYGAME_AVAILABLE:
+            pygame.mixer.init()
+        else:
+            self.player = QMediaPlayer()
 
     def play(self, file_path):
-        if os.path.exists(file_path):
-            url = QUrl.fromLocalFile(file_path)
-            self.player.setMedia(QMediaContent(url))
-            self.player.play()
+        if not os.path.exists(file_path):
+            print(f"Audio file not found: {file_path}")
+            return
+
+        if PYGAME_AVAILABLE:
+            try:
+                pygame.mixer.music.load(file_path)
+                pygame.mixer.music.play()
+            except Exception as e:
+                print(f"Pygame Audio Error: {e}")
+        else:
+            try:
+                url = QUrl.fromLocalFile(file_path)
+                self.player.setMedia(QMediaContent(url))
+                self.player.play()
+            except Exception as e:
+                print(f"PyQt Audio Error: {e}")
 
 # ================= CLIPBOARD WINDOW =================
 class ClipboardWindow(QWidget):
@@ -43,7 +66,6 @@ class ClipboardWindow(QWidget):
         self.pet = pet
         self.setWindowTitle("Clipboard History")
         self.setFixedSize(350, 450)
-        # Added WindowStaysOnTopHint and Tool to ensure it shows up correctly
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool)
 
         self.list_widget = QListWidget()
@@ -70,7 +92,6 @@ class ClipboardWindow(QWidget):
 
     def refresh_list(self):
         self.list_widget.clear()
-        # Use a copy to avoid modification issues during iteration
         history = list(self.pet.clip_history)
         for item in reversed(history):
             self.list_widget.addItem(item)
@@ -319,6 +340,9 @@ class DesktopPet(QLabel):
         self.click_count = 0
 
     def force_exit(self):
+        # Play sound on exit attempt
+        self.sounds.play(SOUND_YOWAI_MO)
+        
         pending = self.todo_window.get_pending_tasks()
         if pending:
             reply = QMessageBox.question(self, 'Exit', 
@@ -338,6 +362,10 @@ class DesktopPet(QLabel):
             self.setFocus()
             self.click_count += 1
             self.click_reset_timer.start(2000)
+            
+            # Play sound on click
+            self.sounds.play(SOUND_YOWAI_MO)
+            
             if self.click_count >= 4:
                 self.force_exit()
             event.accept()
@@ -391,7 +419,6 @@ class DesktopPet(QLabel):
                     self.clip_history.remove(text)
                 self.clip_history.append(text)
                 
-                # Limit history to 50 items
                 if len(self.clip_history) > 50:
                     self.clip_history.pop(0)
                     
@@ -399,7 +426,6 @@ class DesktopPet(QLabel):
                 if self.clip_window.isVisible():
                     self.clip_window.refresh_list()
         except Exception as e:
-            # Print error to console for debugging
             print(f"Clipboard Check Error: {e}")
 
     def check_battery(self):
@@ -413,7 +439,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     
-    # Ensure pyperclip is working
+    # Check dependencies
     try:
         import pyperclip
     except ImportError:
